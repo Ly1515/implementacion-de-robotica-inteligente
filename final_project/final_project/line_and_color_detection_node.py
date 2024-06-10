@@ -16,11 +16,11 @@ class LineandColorDetection(Node):
         super().__init__('line_and_color_detection_node')
 
         self.sub_image = self.create_subscription(Image,'/video_source/raw', self.image_callback, rclpy.qos.qos_profile_sensor_data)
-        
+
         #Linea
         self.pub_vel_line =  self.create_publisher(Twist, 'vel_line', rclpy.qos.qos_profile_sensor_data)
         self.prueba = self.create_publisher(Image, 'prueba', rclpy.qos.qos_profile_sensor_data)
-        
+
         #colores
         self.img_mask_red = self.create_publisher(Image,'/img_propeties/red/msk', rclpy.qos.qos_profile_sensor_data)
         self.color_percentage_red = self.create_publisher(Float32, '/img_propeties/red/density', rclpy.qos.qos_profile_sensor_data)
@@ -33,9 +33,9 @@ class LineandColorDetection(Node):
 
         # vel final
         self.pub_vel = self.create_publisher(Twist, '/cmd_vel', rclpy.qos.qos_profile_sensor_data)
-        
+
     
-        
+
         #Variables
         self.bridge = CvBridge()
 
@@ -63,6 +63,7 @@ class LineandColorDetection(Node):
     
         self.image_message_green = Image()
 
+
         self.image_message_yellow = Image()
 
         self.red_p = Float32()
@@ -84,11 +85,11 @@ class LineandColorDetection(Node):
         hsv_img = cv2.cvtColor(img_camara, cv2.COLOR_RGB2HSV)
 
         # color rojo
-        lower1_red = 0
-        upper1_red = 10
-        lower2_red = 170
-        upper2_red = 180
-        satu_red   = 100
+        lower1_red = 150
+        upper1_red = 255
+        lower2_red = 0
+        upper2_red = 0
+        satu_red   = 125
 
         # Mask image
         lower_mask = hsv_img[:,:,0] > lower1_red
@@ -121,11 +122,11 @@ class LineandColorDetection(Node):
     
 
         # color verde
-        lower1_green = 30
-        upper1_green = 90
+        lower1_green = 64
+        upper1_green = 102
         lower2_green = 0
         upper2_green = 0
-        satu_green   = 0
+        satu_green   = 127
 
         # Mask image
         lower_mask = hsv_img[:,:,0] > lower1_green
@@ -133,8 +134,11 @@ class LineandColorDetection(Node):
         lower_mask2 = hsv_img[:,:,0] >= lower2_green
         upper_mask2 = hsv_img[:,:,0] < upper2_green
         saturation_mask = hsv_img[:,:,1] > satu_green
-        mask2 = (upper_mask*lower_mask)+(upper_mask2*lower_mask2)*saturation_mask
-    
+        m_1 = (upper_mask & lower_mask)
+        m_2 = (upper_mask2 & lower_mask2)
+        mask2 = (m_1 | m_2) & saturation_mask
+
+
         red = img_camara[:,:,0]*mask2
         green = img_camara[:,:,1]*mask2
         blue = img_camara[:,:,2]*mask2
@@ -147,23 +151,23 @@ class LineandColorDetection(Node):
         # percentage
         total_pixels_g = np.prod(img_gray_g.shape[:2])
         mask_pixels_g = cv2.countNonZero(img_gray_g)
-        self.green_p.data = (mask_pixels_g / total_pixels_g)*100 + 5
+        self.green_p.data = (mask_pixels_g / total_pixels_g)*100
 
         self.image_message_green = self.bridge.cv2_to_imgmsg(img_closing_green, encoding = 'mono8')
 
         # color amarillo
-        lower1_yellow = 20
-        upper1_yellow = 40
-        lower2_yellow = 0
-        upper2_yellow = 0
-        satu_yellow   = 0
+        lower1_yellow = 38
+        upper1_yellow = 51
+        lower2_yellow = 196
+        upper2_yellow = 221
+        satu_yellow   = 25
 
         # Mask image
         lower_mask = hsv_img[:,:,0] > lower1_yellow
         upper_mask = hsv_img[:,:,0] < upper1_yellow
         lower_mask2 = hsv_img[:,:,0] >= lower2_yellow
         upper_mask2 = hsv_img[:,:,0] < upper2_yellow
-        saturation_mask = hsv_img[:,:,1] > satu_yellow
+        saturation_mask = hsv_img[:,:,1] < satu_yellow
         mask2 = (upper_mask*lower_mask)+(upper_mask2*lower_mask2)*saturation_mask
     
         red = img_camara[:,:,0]*mask2
@@ -178,10 +182,11 @@ class LineandColorDetection(Node):
         # percentage
         total_pixels_y = np.prod(img_gray_y.shape[:2])
         mask_pixels_y = cv2.countNonZero(img_gray_y)
-        self.yellow_p.data = (mask_pixels_y / total_pixels_y)*100 + 5
+        self.yellow_p.data = (mask_pixels_y / total_pixels_y)*100 
+        #self.get_logger().info('new yellow:D!!')
 
         self.image_message_yellow = self.bridge.cv2_to_imgmsg(img_closing_yellow, encoding = 'mono8')
-        
+
     
 
 
@@ -218,17 +223,18 @@ class LineandColorDetection(Node):
                 cv2.line(edged, (x1,y1),(x2,y2),(255,0,0), 4)
 
         self.img_camara = cv2.resize(edged, (900,600),fx = 0.1,fy = 0.1)
+
         self.img_msg = self.bridge.cv2_to_imgmsg(edged, encoding = 'mono8')
-                
+
 
 
 
     def image_callback(self, msg):
-        self.get_logger().info('Received image :D!!')
+        #self.get_logger().info('Received image :D!!')
 
         img_camara = self.bridge.imgmsg_to_cv2(msg, desired_encoding = "rgb8")
         self.img_flip = cv2.flip(img_camara, -1)
-        
+
         img_cropped = self.img_flip[600:950,340:940]
         self.img_gray = cv2.cvtColor(img_cropped, cv2.COLOR_RGB2GRAY)
 
@@ -248,31 +254,30 @@ class LineandColorDetection(Node):
            self.img_gray = self.img_gray
 
 
-
-
-
     def timer_callback(self):
-        self.detectar_lineas(self.img_gray)
-        self.detectar_colores(self.img_flip)
-        
-        self.vel.linear.x = self.v_lineal
-        self.vel.angular.z = self.v_ang
+        try:
+            self.detectar_lineas(self.img_gray)
+            self.detectar_colores(self.img_flip)
+
+            self.vel.linear.x = self.v_lineal
+            self.vel.angular.z = self.v_ang
 
 
-        # Publisher
-        self.pub_vel_line.publish(self.vel)
-        self.prueba.publish(self.img_msg)
-        
-        # colores
-        self.img_mask_red.publish(self.image_message_red)
-        self.color_percentage_red.publish(self.red_p)
+            # Publisher
+            self.pub_vel_line.publish(self.vel)
+            self.prueba.publish(self.img_msg)
 
-        self.img_mask_green.publish(self.image_message_green)
-        self.color_percentage_green.publish(self.green_p)   
+            # colores
+            self.img_mask_red.publish(self.image_message_red)
+            self.color_percentage_red.publish(self.red_p)
 
-        self.img_mask_yellow.publish(self.image_message_yellow)
-        self.color_percentage_yellow.publish(self.yellow_p)
+            self.img_mask_green.publish(self.image_message_green)
+            self.color_percentage_green.publish(self.green_p)   
 
+            self.img_mask_yellow.publish(self.image_message_yellow)
+            self.color_percentage_yellow.publish(self.yellow_p)
+        except:
+           pass
 
 def main(args=None):
     rclpy.init(args=args)
@@ -280,7 +285,11 @@ def main(args=None):
     rclpy.spin(ld)
     ld.destroy_node()
     rclpy.shutdown()
+
     
 if __name__== '__main__':
     main()
+
+
+
 
