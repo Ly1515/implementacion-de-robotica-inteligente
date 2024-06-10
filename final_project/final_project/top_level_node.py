@@ -1,6 +1,7 @@
 import rclpy
 import rclpy.qos
 from rclpy.node import Node
+import numpy as np
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32, Bool, Int32
 from geometry_msgs.msg import Twist
@@ -32,17 +33,22 @@ class TopLevel(Node):
         self.yellow = False
         self.green = False
         self.red = False
+        self.yellow_salir = False
 
         self.vel_final = Twist()
         self.vel_linear = 0.0
         self.vel_angular = 0.0
+        self.vel_senales_lin = 0.01
+        self.vel_senales_ang = 0.0
         
         
         self.contador = Int32()
         self.indice_senal_ant = Int32()
-        self.estados_senales = [False] * 7
+       
+        self.estados_senales = [False] * 8
+        self.cont_senales = [0]  * 8
 
-        self.timer_period = 0.2  # seconds
+        self.timer_period = 0.2  #  self.estados_senales = [False] * 7seconds
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
 
     def green_density(self, msg):
@@ -63,61 +69,56 @@ class TopLevel(Node):
         self.indice_senal.data = msg.data
 
     def colores_vel(self):
-        
-        if self.red_p.data >= 15.0:
-            self.red = True
-        elif self.green_p.data >= 15.0:
-            self.green = True
-        elif self.yellow_p.data >= 15.0:
-            self.yellow = True
 
         if self.red == True:
-           #self.get_logger().info('Parateeeee pero parateee')
+           self.get_logger().info('Parateeeee pero parateee')
            self.vel_final.linear.x = 0.0
            self.vel_final.angular.z = 0.0
 
-           if self.green_p.data >= 15.0:
+           if self.green_p.data >= 0.4:
                self.green = True
                self.red = False
                self.yellow = False
-           elif self.yellow_p.data >= 15.0:
-               self.green = False
-               self.red = False
-               self.yellow = True
+           elif self.yellow_p.data >= 0.08 and self.yellow_p.data <= 1.5:
+                self.yellow = True
+                self.green = False
+                self.red = False
 
         elif self.green == True:
-            #self.get_logger().info('Patitas pa que las quieres')
+            self.get_logger().info('Patitas pa que las quieres')
             self.vel_final.linear.x = self.vel_linear
             self.vel_final.angular.z = self.vel_angular
 
-            if self.red_p.data >= 15.0:
+            if self.red_p.data >= 0.9:
                self.red = True
                self.green = False
                self.yellow = False
-            elif self.yellow_p.data >= 15.0:
-               self.green = False
-               self.red = False
-               self.yellow = True
-
+            elif self.yellow_p.data >= 0.08 and self.yellow_p.data <= 1.5:
+                self.yellow = True
+                self.green = False
+                self.red = False
+                
         elif self.yellow == True:
-            if self.vel_final.linear.x > 0.01:
-               self.vel_final.linear.x -= 0.01
-            else:
-               self.vel_final.linear.x = 0.0
+                self.get_logger().info('Avanzale que se pone el rojo')
+                if self.vel_final.linear.x > 0.01:
+                    self.vel_final.linear.x -= 0.01
+                else:
+                    self.vel_final.linear.x = 0.0
 
-            if self.vel_final.angular.z > 0.01:
-               self.vel_final.angular.z -= 0.01
-            else:
-               self.vel_final.angular.z = 0.0
+                if self.vel_final.angular.z > 0.01:
+                    self.vel_final.angular.z -= 0.01
+                else:
+                    self.vel_final.angular.z = 0.0
+                    
+                if self.red_p.data >= 0.9:
+                    self.red = True
+                    self.green = False
+                    self.yellow = False
+                elif self.green_p.data >= 0.4:
+                    self.green = True
+                    self.red = False
+                    self.yellow = False
 
-            if self.red_p.data >= 15.0:
-               self.red = True
-               self.green = False
-               self.yellow = False
-            elif self.green_p.data >= 15.0:
-               self.green = True
-               self.red = False
-               self.yellow = False
 
         else:
            #self.get_logger().info('Nada nadotaaaa')
@@ -126,57 +127,156 @@ class TopLevel(Node):
            
            
     def senales_vel(self):
+            #self.get_logger().info('final: {}'.format(self.estados_senales))
 
             if self.estados_senales[0]:  # Stop sign
                 self.vel_final.linear.x = 0.0
                 self.vel_final.angular.z = 0.0
             elif self.estados_senales[1]:  # Give way
-                self.vel_final.linear.x = self.vel_linear + 0.04
-                self.vel_final.angular.z = self.vel_angular
+                self.vel_final.linear.x = max(0.005, self.vel_final.linear.x - 0.001)
+                self.vel_final.angular.z = max(0.005, self.vel_final.angular.z - 0.001)
             elif self.estados_senales[2]:  # Straigth
-                self.vel_final.linear.x = self.vel_linear
-                self.vel_final.angular.z = self.vel_angular
+                self.vel_final.linear.x = 0.03
+                self.vel_final.angular.z =  0.0
             elif self.estados_senales[4]:  # Turn Left
                 self.vel_final.linear.x = self.vel_linear
-                self.vel_final.angular.z = - 0.01
+                self.vel_final.angular.z = 0.025
             elif self.estados_senales[5]:  # Turn Right
                 self.vel_final.linear.x = self.vel_linear
-                self.vel_final.angular.z = 0.1
+                self.vel_final.angular.z =  - 0.025
             elif self.estados_senales[6]:  # Work in Progress
-                self.vel_final.linear.x = max(0.0, self.vel_final.linear.x - 0.01)
-                self.vel_final.angular.z = max(0.0, self.vel_final.angular.z - 0.01)
+                self.vel_final.linear.x = max(0.005, self.vel_final.linear.x - 0.001)
+                self.vel_final.angular.z = max(0.0, self.vel_final.angular.z - 0.001)
             else:
                 # Resetear todos los estados a False si no se detecta ninguna señal
-                self.estados_senales = [False] * 7
+                self.estados_senales = [False] * 8
                 self.vel_final.linear.x = self.vel_linear
                 self.vel_final.angular.z = self.vel_angular
+                
+    def senales_vel_fuera(self):
+            #self.get_logger().info('final: {}'.format(self.estados_senales))
+
+            if self.estados_senales[0]:  # Stop sign
+                self.vel_final.linear.x = 0.0
+                self.vel_final.angular.z = 0.0
+            elif self.estados_senales[1]:  # Give way
+                self.vel_final.linear.x = max(0.005, self.vel_final.linear.x - 0.001)
+                self.vel_final.angular.z = max(0.005, self.vel_final.angular.z - 0.001)
+            elif self.estados_senales[2]:  # Straigth
+                self.vel_final.linear.x = 0.03
+                self.vel_final.angular.z =  0.0
+            elif self.estados_senales[4]:  # Turn Left
+                self.vel_final.linear.x = 0.02
+                self.vel_final.angular.z = 0.025
+            elif self.estados_senales[5]:  # Turn Right
+                self.vel_final.linear.x = 0.02
+                self.vel_final.angular.z =  - 0.025
+            elif self.estados_senales[6]:  # Work in Progress
+                self.vel_final.linear.x = max(0.005, self.vel_final.linear.x - 0.001)
+                self.vel_final.angular.z = max(0.0, self.vel_final.angular.z - 0.001)
+            else:
+                # Resetear todos los estados a False si no se detecta ninguna señal
+                self.estados_senales = [False] * 8
+                self.vel_final.linear.x = self.vel_senales_lin
+                self.vel_final.angular.z = self.vel_senales_ang
   
 
     def timer_callback(self): 
         
         if self.indice_senal is not None:
-            # Establecer el estado de la señal detectada a True
-            self.estados_senales[self.indice_senal.data] = True
-        
             if self.indice_senal.data != self.indice_senal_ant.data:
+                self.get_logger().info('cero cerote')
                 self.contador.data = 0
+                self.cont_senales= [0] * 8
+                self.estados_senales = [False] * 8
                 self.indice_senal_ant.data = self.indice_senal.data
             else:
                 self.contador.data += 1
+            
+            if self.indice_senal.data == 7:
+                self.estados_senales = [False] * 8
+                self.cont_senales= [0] * 8
+            else:
+                self.cont_senales[self.indice_senal.data] += 1
+        
+    
+            
+            
+        if self.yellow_salir == True:
+            self.get_logger().info('señales fuera pista')
+            
+            if self.contador.data == 0 or self.contador.data < 10 :
+                self.vel_final.linear.x = self.vel_senales_lin
+                self.vel_final.angular.z = self.vel_senales_ang
                 
-
-
-        if self.contador.data == 0 or self.contador.data < 20 :
-            self.colores_vel()
-        elif self.contador.data > 40:
-            self.vel_final.linear.x = self.vel_linear
-            self.vel_final.angular.z = self.vel_angular
+            elif self.contador.data > 70:
+                self.vel_final.linear.x = self.vel_senales_lin
+                self.vel_final.angular.z = self.vel_senales_ang
+            else:
+                
+                #self.get_logger().info('antes: {}'.format(self.estados_senales))
+                index = int(np.argmax(self.cont_senales))
+                if self.cont_senales[index] == 0:
+                    #self.get_logger().info('estados 0: {}'.format(self.estados_senales))
+                    self.estados_senales = [False] * 8
+                else: 
+                    #self.get_logger().info('despues: {}'.format(self.estados_senales))
+                    self.estados_senales[index] = True
+                
+                self.senales_vel_fuera()
         else:
-            self.senales_vel()
+            if self.contador.data == 0 or self.contador.data < 70 :
+                self.vel_final.linear.x = self.vel_linear
+                self.vel_final.angular.z = self.vel_angular
+                
+                if self.red_p.data >= 0.6:
+                    self.red = True
+                    self.colores_vel()
+                elif self.green_p.data >= 0.4:
+                    self.green = True
+                    self.colores_vel()
+                elif self.yellow_p.data >= 0.08 and self.yellow_p.data <= 1.5:
+                    self.yellow = True
+                elif self.yellow_p.data >= 1.8:
+                    self.yellow_salir = True
+
+        
+            elif self.contador.data > 130:
+                self.vel_final.linear.x = self.vel_linear
+                self.vel_final.angular.z = self.vel_angular
+                
+                if self.red_p.data >= 0.6:
+                    self.red = True
+                    self.colores_vel()
+                elif self.green_p.data >= 0.4:
+                    self.green = True
+                    self.colores_vel()
+                elif self.yellow_p.data >= 0.08 and self.yellow_p.data <= 1.5:
+                    self.yellow = True
+                elif self.yellow_p.data >= 1.8:
+                    self.yellow_salir = True
+                
+            else:
+                self.get_logger().info('antes: {}'.format(self.estados_senales))
+                index = int(np.argmax(self.cont_senales))
+                if self.cont_senales[index] == 0:
+                    self.get_logger().info('estados 0: {}'.format(self.estados_senales))
+                    self.estados_senales = [False] * 8
+                else: 
+                    self.get_logger().info('despues: {}'.format(self.estados_senales))
+                    self.estados_senales[index] = True
+                
+                self.senales_vel()
+            
+            
+            
+      
         
         
         self.pub_vel.publish(self.vel_final)
         self.pub_cont.publish(self.contador)
+        
+
 
 
 def main(args=None):
