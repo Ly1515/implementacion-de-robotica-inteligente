@@ -14,8 +14,7 @@ from cv_bridge import CvBridge, CvBridgeError
 class LineandColorDetection(Node):
     def __init__(self):
         super().__init__('line_and_color_detection_node')
-
-        self.sub_image = self.create_subscription(Image,'/video_source/raw', self.image_callback, rclpy.qos.qos_profile_sensor_data)
+      self.sub_image = self.create_subscription(Image,'/video_source/raw', self.image_callback, rclpy.qos.qos_profile_sensor_data)
 
         #Linea
         self.pub_vel_line =  self.create_publisher(Twist, 'vel_line', rclpy.qos.qos_profile_sensor_data)
@@ -156,36 +155,28 @@ class LineandColorDetection(Node):
         self.image_message_green = self.bridge.cv2_to_imgmsg(img_closing_green, encoding = 'mono8')
 
         # color amarillo
-        lower1_yellow = 38
-        upper1_yellow = 51
-        lower2_yellow = 196
-        upper2_yellow = 221
-        satu_yellow   = 25
 
-        # Mask image
-        lower_mask = hsv_img[:,:,0] > lower1_yellow
-        upper_mask = hsv_img[:,:,0] < upper1_yellow
-        lower_mask2 = hsv_img[:,:,0] >= lower2_yellow
-        upper_mask2 = hsv_img[:,:,0] < upper2_yellow
-        saturation_mask = hsv_img[:,:,1] < satu_yellow
-        mask2 = (upper_mask*lower_mask)+(upper_mask2*lower_mask2)*saturation_mask
-    
-        red = img_camara[:,:,0]*mask2
-        green = img_camara[:,:,1]*mask2
-        blue = img_camara[:,:,2]*mask2
+        lower_yellow = np.array([30, 127, 0])
+        upper_yellow = np.array([60, 255, 255])
 
-        img_masked_yellow = np.dstack((red,green,blue))
-        img_gray_y = cv2.cvtColor(img_masked_yellow, cv2.COLOR_RGB2GRAY)
-        ret, th_y = cv2.threshold(img_gray_y, 12, 255, cv2.THRESH_BINARY)
+        yellow_mask = cv2.inRange(hsv_img, lower_yellow, upper_yellow)
 
-        img_closing_yellow = cv2.morphologyEx(th_y, cv2.MORPH_CLOSE, kernel)
+        smoothed_y_mask = cv2.GaussianBlur(yellow_mask, (25, 25), 0)
+
+        y_result = cv2.bitwise_and(img_camara, img_camara, mask=smoothed_y_mask)
+
+        img_gray_y = cv2.cvtColor(y_result, cv2.COLOR_RGB2GRAY)
+        _, img_th_y = cv2.threshold(img_gray_y, 127, 255, cv2.THRESH_BINARY)
+
+
+        #img_closing_yellow = cv2.morphologyEx(img_th_y, cv2.MORPH_CLOSE, kernel)
         # percentage
         total_pixels_y = np.prod(img_gray_y.shape[:2])
         mask_pixels_y = cv2.countNonZero(img_gray_y)
         self.yellow_p.data = (mask_pixels_y / total_pixels_y)*100 
         #self.get_logger().info('new yellow:D!!')
 
-        self.image_message_yellow = self.bridge.cv2_to_imgmsg(img_closing_yellow, encoding = 'mono8')
+        self.image_message_yellow = self.bridge.cv2_to_imgmsg(img_th_y, encoding = 'mono8')
 
     
 
@@ -279,9 +270,10 @@ class LineandColorDetection(Node):
         except:
            pass
 
+
 def main(args=None):
     rclpy.init(args=args)
-    ld = LineDetection()
+    ld = LineandColorDetection()
     rclpy.spin(ld)
     ld.destroy_node()
     rclpy.shutdown()
